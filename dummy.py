@@ -24,6 +24,13 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.linear_model import Perceptron
 from sklearn.linear_model import SGDClassifier
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.cross_validation import KFold
+import matplotlib.pyplot as plt
+from sklearn.svm import SVC, LinearSVC
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.neural_network import MLPClassifier
 
 
 from sklearn.model_selection import train_test_split
@@ -63,12 +70,96 @@ data_train[['age', 'length_of_service','avg_training_score','previous_year_ratin
 std_scale = preprocessing.StandardScaler().fit(data_test[['age', 'length_of_service','avg_training_score','previous_year_rating']])
 data_test[['age', 'length_of_service','avg_training_score','previous_year_rating']] = std_scale.transform(data_test[['age', 'length_of_service','avg_training_score','previous_year_rating']])
 
-predictors = ["department","gender", "recruitment_channel", "no_of_trainings","age",
+
+
+#RANDOM FOREST##########################################
+
+
+
+predictors = ["department","gender", "recruitment_channel","no_of_trainings","age",
               "previous_year_rating", "length_of_service","KPIs_met >80%","awards_won?","avg_training_score"]
 
+rf = RandomForestClassifier(random_state=1, n_estimators=10, min_samples_split=2, 
+                            min_samples_leaf=1)
+kf = KFold(data_train.shape[0], n_folds=5, random_state=1)
+cv = ShuffleSplit(n_splits=10, test_size=0.4, random_state=50)
+
+predictions = cross_validation.cross_val_predict(rf, data_train[predictors],data_train["is_promoted"],cv=kf)
+predictions = pd.Series(predictions)
+scores = cross_val_score(rf, data_train[predictors], data_train["is_promoted"],
+                                          scoring='f1', cv=kf)
+# Take the mean of the scores (because we have one for each fold)
+print(scores.mean())
+
+rf = RandomForestClassifier(random_state=1, n_estimators=100, max_depth=12,min_samples_split=6, min_samples_leaf=4)
+rf.fit(data_train[predictors],data_train["is_promoted"])
+kf = KFold(data_train.shape[0], n_folds=5, random_state=1)
+predictions = cross_validation.cross_val_predict(rf, data_train[predictors],data_train["is_promoted"],cv=kf)
+predictions = pd.Series(predictions)
+scores = cross_val_score(rf, data_train[predictors], data_train["is_promoted"],scoring='f1', cv=kf)
+# Take the mean of the scores (because we have one for each fold)
+print(scores.mean())
+########################################################################
 
 
-from sklearn.neural_network import MLPClassifier
+
+
+
+selector = SelectKBest(f_classif, k=5)
+selector.fit(data_train[predictors], data_train["is_promoted"])
+
+scores = -np.log10(selector.pvalues_)
+indices = np.argsort(scores)[::-1]
+sorted_important_features=[]
+for i in indices:
+    sorted_important_features.append(predictors[i])
+from sklearn import cross_validation
+
+# Initialize our algorithm
+lr = LogisticRegression(random_state=1)
+# Compute the accuracy score for all the cross validation folds.  
+cv = ShuffleSplit(n_splits=10, test_size=0.4, random_state=50)
+scores = cross_val_score(lr, data_train[predictors], data_train["is_promoted"], scoring='f1',cv=cv)
+print(scores.mean())
+
+
+
+
+adb=AdaBoostClassifier()
+adb.fit(data_train[predictors],data_train["is_promoted"])
+cv = ShuffleSplit(n_splits=10, test_size=0.4, random_state=50)
+scores = cross_val_score(adb, data_train[predictors], data_train["is_promoted"], scoring='f1',cv=cv)
+print(scores.mean())
+
+#########################################################
+#SVC MODEL
+
+svc = SVC()
+svc.fit(data_train[predictors], data_train["is_promoted"])
+cv = ShuffleSplit(n_splits=10, test_size=0.4, random_state=50)
+scores = cross_val_score(svc, data_train[predictors], data_train["is_promoted"], scoring='f1',cv=cv)
+print(scores.mean())
+
+#######################################################
+
+perceptron = Perceptron()
+perceptron.fit(data_train[predictors], data_train["is_promoted"])
+cv = ShuffleSplit(n_splits=10, test_size=0.4, random_state=50)
+scores = cross_val_score(perceptron, data_train[predictors], data_train["is_promoted"], scoring='f1',cv=cv)
+print(scores.mean())
+
+#######################################################
+
+
+decision_tree = DecisionTreeClassifier()
+decision_tree.fit(data_train[predictors], data_train["is_promoted"])
+cv = ShuffleSplit(n_splits=10, test_size=0.4, random_state=50)
+scores = cross_val_score(decision_tree, data_train[predictors], data_train["is_promoted"], scoring='f1',cv=cv)
+print(scores.mean())
+
+###################################################
+
+
 mlp = MLPClassifier(hidden_layer_sizes=(28,28,28),max_iter=500)
 mlp.fit(data_train[predictors], data_train["is_promoted"])
 MLPClassifier(activation='sigmoid', alpha=0.03, batch_size='auto', beta_1=0.9,
@@ -86,7 +177,7 @@ predictions = ["department", "gender","recruitment_channel","no_of_trainings","a
               "previous_year_rating", "length_of_service","KPIs_met >80%","awards_won?","avg_training_score"]
 
 eclf1 = VotingClassifier(estimators=[
-        ('mlp',mlp)], voting='soft')
+        ('lr', lr), ('rf', rf), ('adb', adb),('mlp',mlp),('decision_tree',decision_tree)], voting='soft')
 eclf1 = eclf1.fit(data_train[predictors], data_train["is_promoted"])
 predictions=eclf1.predict(data_train[predictors])
 predictions
@@ -99,4 +190,4 @@ submission = pd.DataFrame({
         "is_promoted": test_predictions
     })
 
-submission.to_csv("submission_dummy.csv", index=False)
+submission.to_csv("submission.csv", index=False)
